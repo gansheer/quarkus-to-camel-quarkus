@@ -1,0 +1,5 @@
+target/
+orders/done/
+orders/failed/
+orders/processed/
+.quarkus/
