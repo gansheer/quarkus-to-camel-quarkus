@@ -22,7 +22,7 @@ Built with `quarkus-rest-jackson` and an in-memory `OrderRepository`.
 
 ### camel-quarkus-orders (after)
 
-The same application extended with six Camel Quarkus extensions:
+The same application extended with seven Camel Quarkus extensions:
 
 | Extension | Purpose |
 |---|---|
@@ -31,6 +31,7 @@ The same application extended with six Camel Quarkus extensions:
 | `camel-quarkus-jackson` | Marshal orders to JSON |
 | `camel-quarkus-http` | Call the Loyalty API |
 | `camel-quarkus-file` | Poll CSV files from `orders/incoming/` |
+| `camel-quarkus-csv` | Parse CSV file content into rows |
 | `camel-quarkus-bean` | Invoke CDI beans from routes |
 
 Two Camel routes are added:

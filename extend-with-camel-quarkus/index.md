@@ -73,7 +73,7 @@ You should get:
         "id": "ORD-001",
         "customer": "Acme Corp",
         "type": "priority",
-        "amount": 1500.00
+        "amount": 1500.0
     }
 ]
 ```
@@ -87,13 +87,15 @@ Add the Camel Quarkus extensions you'll need:
 ```shell
 quarkus ext add camel-quarkus-kafka camel-quarkus-jackson \
     camel-quarkus-http camel-quarkus-file camel-quarkus-bean \
-    camel-quarkus-direct
+    camel-quarkus-direct camel-quarkus-csv
 ```
 
 If you don't have the [Quarkus CLI](https://quarkus.io/guides/cli-tooling) you can add directly in your pom.xml:
 
 * the quarkus-camel-bom to <dependencyManagement> so versions are managed:
 ```xml
+<dependencyManagement>
+...
   <dependency>
       <groupId>io.quarkus.platform</groupId>
       <artifactId>quarkus-camel-bom</artifactId>
@@ -101,6 +103,8 @@ If you don't have the [Quarkus CLI](https://quarkus.io/guides/cli-tooling) you c
       <type>pom</type>
       <scope>import</scope>
   </dependency>
+...
+</dependencyManagement>
 ```
 * the dependencies:
 ```xml
@@ -127,6 +131,10 @@ If you don't have the [Quarkus CLI](https://quarkus.io/guides/cli-tooling) you c
   <dependency>
       <groupId>org.apache.camel.quarkus</groupId>
       <artifactId>camel-quarkus-jackson</artifactId>
+  </dependency>
+  <dependency>
+      <groupId>org.apache.camel.quarkus</groupId>
+      <artifactId>camel-quarkus-csv</artifactId>
   </dependency>
 ```
 
@@ -180,7 +188,7 @@ public class OrderResource {
 }
 ```
 
-`ProducerTemplate` is Camel's bridge from your existing code into a Camel route. In Camel Quarkus, it's automatically available as a CDI bean. You just need to `@Inject` it. The `sendBody` call pushes the order object into the `direct:order-placed` endpoint, which is the entry point of your Camel route.
+`ProducerTemplate` is Camel's bridge from your existing code into a Camel route. A *route* in Camel is a processing pipeline: it starts from an input (a URI like `direct:`, `kafka:`, or `file:`), applies a chain of steps (transformation, filtering, logging) and then sends the result to one or more outputs. Think of it as a method chain that wires together I/O and processing without the boilerplate. In Camel Quarkus, `ProducerTemplate` is automatically available as a CDI bean. You just need to `@Inject` it. The `sendBody` call pushes the order object into the `direct:order-placed` endpoint, which is the entry point of your Camel route.
 
 Here's that Camel route you need to add:
 
@@ -306,13 +314,17 @@ public class FileProcessingRoute extends RouteBuilder {
 
     @Override
     public void configure() {
+        CsvDataFormat csv = new CsvDataFormat();
+        csv.setSkipHeaderRecord(true);
+
         from("file:orders/incoming?include=.*\\.csv"
                 + "&move=../done&moveFailed=../failed"
                 + "&readLock=changed")
             .routeId("file-ingestion")
             .log("Processing file: ${header.CamelFileName}")
-            .bean("orderFileParser")
+            .unmarshal(csv)
             .split(body())
+                .bean("orderConverter")
                 .bean("orderRepository", "add")
             .end()
             .log("File processed: ${header.CamelFileName}");
@@ -320,32 +332,24 @@ public class FileProcessingRoute extends RouteBuilder {
 }
 ```
 
-The `file` component handles polling, read-locking (no partial reads), and move-on-success/failure through URI options. `orderRepository` is your existing CDI bean, referenced by name. For Camel to look up the bean by name, add `@Named("orderRepository")` to `OrderRepository`. `orderFileParser` is a small bean you add to parse the CSV lines.
+The `file` component handles polling, read-locking (no partial reads), and move-on-success/failure through URI options. Camel's built-in `CsvDataFormat` parses the file content into rows, skipping the header. After `split(body())`, each exchange carries one row as a `List<String>`. `orderConverter` is a small bean that maps each row to an `Order`:
 
-Here's a simple implementation:
 ```java
 @ApplicationScoped
-@Named("orderFileParser")
-public class OrderFileParser {
+@Named("orderConverter")
+public class OrderConverter {
 
-    public List<Order> parse(String csvContent) {
-        return csvContent.lines()
-                .skip(1)
-                .filter(line -> !line.isBlank())
-                .map(this::parseLine)
-                .toList();
-    }
-
-    private Order parseLine(String line) {
-        String[] parts = line.split(",", 4);
+    public Order fromCsvRow(List<String> row) {
         return new Order(
-                parts[0].trim(),
-                parts[1].trim(),
-                parts[2].trim(),
-                new BigDecimal(parts[3].trim()));
+                row.get(0).trim(),
+                row.get(1).trim(),
+                row.get(2).trim(),
+                new BigDecimal(row.get(3).trim()));
     }
 }
 ```
+
+`orderRepository` is your existing CDI bean, referenced by name. For Camel to look up the bean by name, add `@Named("orderRepository")` to `OrderRepository`.
 
 **Try it**, drop a CSV file and verify:
 
@@ -371,7 +375,7 @@ curl -s http://localhost:8080/api/orders
 
 You'll see the orders from the CSV file alongside any you created via the REST API. The original file has been moved to `orders/done/`. A malformed file would go to `orders/failed/` instead.
 
-**Extensions used:** `camel-quarkus-file`, `camel-quarkus-bean`
+**Extensions used:** `camel-quarkus-file`, `camel-quarkus-csv`, `camel-quarkus-bean`
 
 ## What changed in your existing code
 
@@ -381,10 +385,10 @@ Let's look into the changes. You added three integration capabilities: Kafka eve
 2. `producerTemplate.sendBody("direct:order-placed", order)` — one new call in `OrderResource`
 3. `@Named("orderRepository")` on `OrderRepository` — so Camel can look it up by name
 
-Everything else is new classes (`RouteBuilder`s, `OrderFileParser`) that live alongside your existing code. Nothing was rewritten. Nothing was removed. The file ingestion route didn't touch your REST layer at all.
+Everything else is new classes (`RouteBuilder`s, `OrderConverter`) that live alongside your existing code. Nothing was rewritten. Nothing was removed. The file ingestion route didn't touch your REST layer at all.
 
 **[Figure 2 — Data flow through the extended application]**
-![Data flow through the extended application](camel-quarkus-dataflow.png "Flow diagram showing two independent paths. Path 1: a REST POST request arrives → OrderResource persists the order → ProducerTemplate sends to direct:order-placed → Camel marshals to JSON → sends to the order-events Kafka topic → calls the loyalty HTTP API (with retry/backoff on failure). Path 2: a CSV file lands in orders/incoming/ → Camel file route picks it up (with read-lock) → orderFileParser parses rows → orderRepository persists each order → file moves to orders/done/ (or orders/failed/ on error). Both paths feed into the same OrderRepository, visible through the existing GET /api/orders endpoint.")
+![Data flow through the extended application](camel-quarkus-dataflow.png "Flow diagram showing two independent paths. Path 1: a REST POST request arrives → OrderResource persists the order → ProducerTemplate sends to direct:order-placed → Camel marshals to JSON → sends to the order-events Kafka topic → calls the loyalty HTTP API (with retry/backoff on failure). Path 2: a CSV file lands in orders/incoming/ → Camel file route picks it up (with read-lock) → CsvDataFormat parses rows → orderConverter maps each row to an Order → orderRepository persists each order → file moves to orders/done/ (or orders/failed/ on error). Both paths feed into the same OrderRepository, visible through the existing GET /api/orders endpoint.")
 
 ## Camel lives alongside your existing code
 
