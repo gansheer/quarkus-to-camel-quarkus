@@ -394,7 +394,7 @@ Everything else is new classes (`RouteBuilder`s, `OrderConverter`) that live alo
 
 A few things worth knowing about how the two coexist:
 
-- **CDI beans are shared.** Any `@ApplicationScoped` bean with `@Named` is available in Camel routes via `.bean("beanName")`. You can also look up beans by type with `.bean(MyService.class)`.
+- **CDI beans are shared.** Any bean with `@Named` or `@Identifier` is available in Camel routes via `.bean("beanName")`. You can also look up beans by type with `.bean(MyService.class)`.
 
 - **REST endpoints coexist.** Your JAX-RS endpoints continue to be served by Quarkus HTTP. Camel routes that use `platform-http` can even share the same HTTP server.
 
