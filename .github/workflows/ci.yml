@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test-quarkus-orders:
+    name: quarkus-orders
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Run tests
+        run: mvn -f extend-with-camel-quarkus/quarkus-orders verify
+
+  test-camel-quarkus-orders:
+    name: camel-quarkus-orders
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Run tests
+        run: mvn -f extend-with-camel-quarkus/camel-quarkus-orders verify
+
+  native-quarkus-orders:
+    name: quarkus-orders (native)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[native]')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Run native tests
+        run: >
+          mvn -f extend-with-camel-quarkus/quarkus-orders verify
+          -Dnative -Dquarkus.native.container-build=true
+
+  native-camel-quarkus-orders:
+    name: camel-quarkus-orders (native)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[native]')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Run native tests
+        run: >
+          mvn -f extend-with-camel-quarkus/camel-quarkus-orders verify
+          -Dnative -Dquarkus.native.container-build=true
