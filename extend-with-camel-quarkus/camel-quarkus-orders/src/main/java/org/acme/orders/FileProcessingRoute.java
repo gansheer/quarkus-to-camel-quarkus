@@ -13,7 +13,7 @@ public class FileProcessingRoute extends RouteBuilder {
         CsvDataFormat csv = new CsvDataFormat();
         csv.setSkipHeaderRecord(true);
 
-        from("file:orders/incoming?include=.*\\.csv&move=../done&moveFailed=../failed&readLock=changed")
+        from("file:{{file.orders.incoming:orders/incoming}}?include=.*\\.csv&move=../done&moveFailed=../failed&readLock=changed")
                 .routeId("file-ingestion")
                 .log("Processing file: ${header.CamelFileName}")
                 .unmarshal(csv)
