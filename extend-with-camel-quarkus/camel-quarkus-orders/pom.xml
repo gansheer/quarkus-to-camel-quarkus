@@ -11,6 +11,7 @@
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <quarkus.platform.version>3.38.2</quarkus.platform.version>
+        <surefire-plugin.version>3.5.4</surefire-plugin.version>
     </properties>
 
     <dependencyManagement>
@@ -108,4 +109,35 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>native</id>
+            <activation>
+                <property>
+                    <name>native</name>
+                </property>
+            </activation>
+            <properties>
+                <quarkus.native.enabled>true</quarkus.native.enabled>
+                <quarkus.package.jar.enabled>false</quarkus.package.jar.enabled>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <version>${surefire-plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
